@@ -40,4 +40,4 @@ class AutoScaler:
 class Fargate:
     CPU = 256
     MEMORY_LIMIT = 512
-    CONTAINER_PORT = 5000
+    CONTAINER_PORT = 3500
