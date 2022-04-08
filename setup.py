@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""
-This file is used to create the package we'll publish to PyPI.
-
-.. currentmodule:: setup.py
-.. moduleauthor:: ola <ola.wahab@languageio.com>
-"""
-
 import importlib.util
 import io
 import os
@@ -17,10 +10,6 @@ from codecs import open  # Use a consistent encoding.
 from os import path
 
 here = path.abspath(path.dirname(__file__))
-
-# Get the long description from the relevant file
-with open(path.join(here, "README.rst"), encoding="utf-8") as f:
-    long_description = f.read()
 
 # Get the base version from the library.  (We'll find it in the `version.py`
 # file in the src directory, but we'll bypass actually loading up the library.)
@@ -43,7 +32,6 @@ if os.getenv("buildnum") is not None:
 setup(
     name="ron",
     description="A wrapper around AWS CDK for generating resources",
-    long_description=long_description,
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     version=version,
     install_requires=REQUIRED,
