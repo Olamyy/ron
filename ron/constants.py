@@ -14,7 +14,7 @@ LOGGING_LEVELS = {
 class VPC:
     MAX_AVAILABILITY_ZONE = 2
     SUBNET_NAME = "Public"
-    AVAILABILITY_ZONES = ["us-east-2a", "us-east-2b", "us-east-2c"]
+    AVAILABILITY_ZONES = ["us-east-1a", "us-east-1b", "us-east-1c"]
 
 
 @dataclasses.dataclass
@@ -26,7 +26,7 @@ class RDSDatabase:
 
 @dataclasses.dataclass
 class LoadBalancer:
-    WHITELISTED_IPS = {"3.139.112.56/32": "Prod Server"}
+    PRODUCTION_WHITELISTED_IPS = {"3.139.112.56/32": "Prod Server"}
 
 
 @dataclasses.dataclass
@@ -38,6 +38,6 @@ class AutoScaler:
 
 @dataclasses.dataclass
 class Fargate:
-    CPU = 256
-    MEMORY_LIMIT = 512
+    CPU = 2048
+    MEMORY_LIMIT = 4096
     CONTAINER_PORT = 3500

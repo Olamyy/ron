@@ -11,7 +11,8 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elb
 from aws_cdk import aws_ecr as ecr
-from aws_cdk.core import Environment
+from aws_cdk.core import Environment, Duration, Aws
+import aws_cdk.aws_secretsmanager as secretsmanager
 
 from ron.constants import VPC, RDSDatabase, LoadBalancer, Fargate, AutoScaler
 from ron.helpers import generate_random_cdk_like_suffix
@@ -28,15 +29,16 @@ class AWSResources(enum.Enum):
 
 class AWSStack(cdk_core.Stack):
     def __init__(
-        self,
-        scope: cdk_core.Construct,
-        config: Mapping[str, Union[str, Dict]],
-        **kwargs,
+            self,
+            scope: cdk_core.Construct,
+            config: Mapping[str, Union[str, Dict]],
+            deployment_environment: str = "DEV",
+            **kwargs,
     ) -> None:
         self.config = config
         stack_name = self.config.get("metadata").get("stack_name")
-        env = self.setup_environment(self.config.get("environment"))
-        super().__init__(scope, stack_name=stack_name, env=env, **kwargs)
+        super().__init__(scope, stack_name=stack_name, env=self.setup_environment(), **kwargs)
+        self.deployment_env = deployment_environment
 
         self.resources = self.extract_resources()
         self.vpc = None
@@ -57,9 +59,8 @@ class AWSStack(cdk_core.Stack):
             if resource.get("type") == AWSResources.IAM_ROLE.value:
                 self.add_role(resource)
             elif resource.get("type") == AWSResources.VPC.value:
-                name = resource.get("parameters").get("vpc_name")
                 cidr = resource.get("parameters").get("vpc_cidr")
-                self.add_vpc(name, cidr)
+                self.add_vpc(cidr)
             elif resource.get("type") == AWSResources.ECS_CLUSTER.value:
                 self.add_ecs_cluster(resource)
             elif resource.get("type") == AWSResources.EC2_SECURITY_GROUP.value:
@@ -74,9 +75,10 @@ class AWSStack(cdk_core.Stack):
         return VPC.AVAILABILITY_ZONES
 
     @staticmethod
-    def setup_environment(environment: Dict):
+    def setup_environment():
         return Environment(
-            account=environment.get("account"), region=environment.get("region")
+            account=Aws.ACCOUNT_ID,
+            region=Aws.REGION
         )
 
     def add_role(self, resource: Mapping[str, Union[str, Dict]]):
@@ -109,13 +111,13 @@ class AWSStack(cdk_core.Stack):
 
         return self.role
 
-    def add_vpc(self, name: str, cidr: str):
+    def add_vpc(self, cidr: str):
         """
         Add an EC2 VPC to the stack
         """
 
         if not self.vpc:
-            vpc_name = f"{name}-{generate_random_cdk_like_suffix()}-vpc"
+            vpc_name = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-vpc"
             self.vpc = ec2.Vpc(
                 self,
                 id=vpc_name,
@@ -155,7 +157,13 @@ class AWSStack(cdk_core.Stack):
                 f"-{generate_random_cdk_like_suffix()}-security-group"
             )
             self.security_group = ec2.SecurityGroup(
-                self, id=security_group_name, vpc=vpc
+                self, id=security_group_name, vpc=vpc, allow_all_outbound=False
+            )
+
+            self.security_group.add_egress_rule(
+                peer=ec2.Peer.any_ipv4(),
+                connection=ec2.Port.all_tcp(),
+                description="Allow requests to hugging face",
             )
 
         return self.security_group
@@ -169,8 +177,8 @@ class AWSStack(cdk_core.Stack):
         database_security_group = self.add_ec2_security_group(
             resource={
                 "parameters": {
-                    "name": f"{parameters.get('security_group_name')}"
-                    f"-{generate_random_cdk_like_suffix()}-security-group"
+                    "name": f"{self.stack_name}"
+                            f"-{generate_random_cdk_like_suffix()}-security-group"
                 }
             }
         )
@@ -181,12 +189,12 @@ class AWSStack(cdk_core.Stack):
 
         database_resource_id = (
             f"{self.stack_name}-{parameters.get('database_name')}"
-            f"-{generate_random_cdk_like_suffix()}-database-instance"
+            f"-{generate_random_cdk_like_suffix()}-db-instance"
         )
-        database_name = f"{parameters.get('database_name')}database"
+        database_name = f"{parameters.get('database_name')}"
         database_instance_identifier = (
             f"{parameters.get('database_name')}"
-            f"-{generate_random_cdk_like_suffix()}-database-instance-identifier"
+            f"-{generate_random_cdk_like_suffix()}-db-identifier"
         )
 
         database_instance = rds.DatabaseInstance(
@@ -208,11 +216,30 @@ class AWSStack(cdk_core.Stack):
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
-            publicly_accessible=False,
+            publicly_accessible=True,
             security_groups=[database_security_group],
             vpc_subnets=self.vpc.public_subnets[0],
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
+
+        ips = self.get_ips(parameters.get("whitelisted_ips"))
+
+        if self.deployment_env == "PRODUCTION":
+            for ip_address, description in ips.items():
+                database_instance.connections.allow_from(
+                    ec2.Peer.ipv4(ip_address),
+                    connection=ec2.Port.all_tcp(),
+                    description=description,
+                )
+        else:
+            database_instance.connections.allow_from_any_ipv4(
+                port_range=ec2.Port.all_tcp()
+            )
+
+        secretsmanager.Secret.from_secret_complete_arn(self,
+                                                       f"{self.stack_name}-database-secret",
+                                                       database_instance.secret.secret_arn)
+
         return database_instance
 
     def get_vpc(self, name: Optional[str] = None, cidr: Optional[str] = None):
@@ -220,7 +247,6 @@ class AWSStack(cdk_core.Stack):
             return self.vpc
 
         vpc = self.add_vpc(
-            name=name,
             cidr=cidr,
         )
         return vpc
@@ -237,40 +263,47 @@ class AWSStack(cdk_core.Stack):
             repo_name=repo_name, image=image
         )
 
-        if desired_count > 0:
-            ips = self.get_ips(parameters.get("whitelisted_ips"))
-            load_balancer = self.add_load_balancer(ips=ips, name=parameters.get("name"))
+        ips = self.get_ips(parameters.get("whitelisted_ips"))
+        load_balancer = self.add_load_balancer(ips=ips)
 
-            load_balancing_service = self.add_load_balancing_service(
-                load_balancer=load_balancer,
-                repo_name=repo_name,
-                fargate_task=fargate_task_definition,
-                desired_count=desired_count,
-            )
+        load_balancing_service = self.add_load_balancing_service(
+            load_balancer=load_balancer,
+            repo_name=repo_name,
+            fargate_task=fargate_task_definition,
+            desired_count=desired_count,
+        )
 
-            scalable_target = load_balancing_service.service.auto_scale_task_count(
-                min_capacity=AutoScaler.MIN, max_capacity=AutoScaler.MIN
-            )
-            scalable_target.scale_on_cpu_utilization(
-                "CpuScaling", target_utilization_percent=AutoScaler.PERCENT
-            )
-            scalable_target.scale_on_memory_utilization(
-                "MemoryScaling", target_utilization_percent=AutoScaler.PERCENT
-            )
+        load_balancing_service.target_group.configure_health_check(
+            path=parameters.get("health_check"),
+            interval=Duration.seconds(120),
+        )
+
+        scalable_target = load_balancing_service.service.auto_scale_task_count(
+            min_capacity=AutoScaler.MIN, max_capacity=AutoScaler.MIN
+        )
+        scalable_target.scale_on_cpu_utilization(
+            "CpuScaling", target_utilization_percent=AutoScaler.PERCENT
+        )
+        scalable_target.scale_on_memory_utilization(
+            "MemoryScaling", target_utilization_percent=AutoScaler.PERCENT
+        )
 
     @staticmethod
     def get_ips(user_ips: Optional[List[Dict]] = None):
-        ips = LoadBalancer.WHITELISTED_IPS
+        ips = LoadBalancer.PRODUCTION_WHITELISTED_IPS
         if user_ips:
             for ip in user_ips:
                 for ip_address, description in ip.items():
                     if ip_address not in ips:
                         ips[ip_address] = description
+        else:
+            for ip_address, description in ips.items():
+                ips[ip_address] = description
 
         return ips
 
-    def add_load_balancer(self, ips: Dict, name: str):
-        load_balancer_name = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-{name}-load-balancer"
+    def add_load_balancer(self, ips: Dict):
+        load_balancer_name = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-load-balancer"
         load_balancer = elb.ApplicationLoadBalancer(
             self, id=load_balancer_name, vpc=self.vpc, internet_facing=True
         )
@@ -278,17 +311,18 @@ class AWSStack(cdk_core.Stack):
         load_balancer_security_group = self.add_ec2_security_group(
             resource={
                 "parameters": {
-                    "name": f"{name}-{generate_random_cdk_like_suffix()}-security-group"
+                    "name": f"{self.stack_name}-{generate_random_cdk_like_suffix()}-security-group"
                 }
             }
         )
 
-        for ip_address, description in ips.items():
-            load_balancer_security_group.add_ingress_rule(
-                ec2.Peer.ipv4(ip_address),
-                connection=ec2.Port.all_tcp(),
-                description=description,
-            )
+        if self.deployment_env == "PRODUCTION":
+            for ip_address, description in ips.items():
+                load_balancer_security_group.add_ingress_rule(
+                    ec2.Peer.ipv4(ip_address),
+                    connection=ec2.Port.all_tcp(),
+                    description=description,
+                )
 
         load_balancer.add_security_group(load_balancer_security_group)
         return load_balancer
@@ -327,14 +361,15 @@ class AWSStack(cdk_core.Stack):
 
         container.add_port_mappings(
             ecs.PortMapping(
-                container_port=Fargate.CONTAINER_PORT, protocol=ecs.Protocol.TCP
+                container_port=Fargate.CONTAINER_PORT,
+                protocol=ecs.Protocol.TCP
             )
         )
 
         return task
 
     def add_load_balancing_service(
-        self, load_balancer, repo_name, fargate_task, desired_count
+            self, load_balancer, repo_name, fargate_task, desired_count = 1
     ):
         return ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
@@ -344,6 +379,8 @@ class AWSStack(cdk_core.Stack):
             desired_count=desired_count,
             assign_public_ip=True,
             security_groups=[self.security_group],
-            open_listener=False,
+            open_listener=True,
             load_balancer=load_balancer,
+            listener_port=3500
+
         )

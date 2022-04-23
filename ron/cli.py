@@ -51,8 +51,9 @@ def cli(info: Info, verbose: int):
 @cli.command()
 @click.help_option()
 @click.option("--config", help="Path to your YAML configuration")
+@click.option("--environment", help="Environment to deploy to")
 @pass_info
-def generate(info: Info, config=None):
+def generate(info: Info, config: str = None, environment: str = "DEV"):
     """Generate Cloudformation YAML."""
 
     ron_configs = read_ron_config(config)
@@ -70,7 +71,9 @@ def generate(info: Info, config=None):
             output_directory = tempfile.mkdtemp()
             app = cdk_core.App(outdir=output_directory, auto_synth=True)
 
-            AWSStack(app, config=config).build()
+            AWSStack(app,
+                     config=config,
+                     deployment_environment=environment).build()
 
             app.synth(validate_on_synthesis=True)
 

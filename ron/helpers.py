@@ -17,7 +17,7 @@ def get_hash(name: str):
 
 
 def get_root():
-    name = "app.py"
+    name = "requirements.txt"
     curr = os.getcwd()
     while True:
         file_list = os.listdir(curr)
@@ -39,6 +39,7 @@ def read_ron_config(ron_config_path: str = None):
     if ron_config_path:
         ron_configs.append(ron_config_path)
     else:
+
         ron_configs.extend(
             os.listdir(os.path.join(str(base_project_path), "deploy/config"))
         )
