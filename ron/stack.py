@@ -1,4 +1,5 @@
 import enum
+import json
 from typing import Mapping, Union, Dict, Optional, List
 
 import click
@@ -11,6 +12,7 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elb
 from aws_cdk import aws_ecr as ecr
+from aws_cdk.aws_rds import Credentials
 from aws_cdk.core import Environment, Duration, Aws
 import aws_cdk.aws_secretsmanager as secretsmanager
 
@@ -30,15 +32,16 @@ class AWSResources(enum.Enum):
 class AWSStack(cdk_core.Stack):
     def __init__(
             self,
+            deployment_environment: str,
             scope: cdk_core.Construct,
             config: Mapping[str, Union[str, Dict]],
-            deployment_environment: str = "DEV",
             **kwargs,
     ) -> None:
         self.config = config
-        stack_name = self.config.get("metadata").get("stack_name")
-        super().__init__(scope, stack_name=stack_name, env=self.setup_environment(), **kwargs)
-        self.deployment_env = deployment_environment
+        self.deployment_environment = deployment_environment
+        stack_name = f"{self.config.get('metadata').get('stack_name')}-{self.deployment_environment}"
+        env = self.setup_environment(self.config.get("environment"))
+        super().__init__(scope, stack_name=stack_name, env=env, **kwargs)
 
         self.resources = self.extract_resources()
         self.vpc = None
@@ -59,8 +62,9 @@ class AWSStack(cdk_core.Stack):
             if resource.get("type") == AWSResources.IAM_ROLE.value:
                 self.add_role(resource)
             elif resource.get("type") == AWSResources.VPC.value:
+                name = resource.get("parameters").get("vpc_name")
                 cidr = resource.get("parameters").get("vpc_cidr")
-                self.add_vpc(cidr)
+                self.add_vpc(name, cidr)
             elif resource.get("type") == AWSResources.ECS_CLUSTER.value:
                 self.add_ecs_cluster(resource)
             elif resource.get("type") == AWSResources.EC2_SECURITY_GROUP.value:
@@ -75,7 +79,7 @@ class AWSStack(cdk_core.Stack):
         return VPC.AVAILABILITY_ZONES
 
     @staticmethod
-    def setup_environment():
+    def setup_environment(environment: Dict):
         return Environment(
             account=Aws.ACCOUNT_ID,
             region=Aws.REGION
@@ -99,7 +103,7 @@ class AWSStack(cdk_core.Stack):
 
             parameters = resource.get("parameters")
             role_name = (
-                f"{parameters.get('name')}-{generate_random_cdk_like_suffix()}-role"
+                f"{self.stack_name}-{generate_random_cdk_like_suffix()}-role"
             )
 
             self.role = iam.Role(
@@ -111,7 +115,7 @@ class AWSStack(cdk_core.Stack):
 
         return self.role
 
-    def add_vpc(self, cidr: str):
+    def add_vpc(self, name: str, cidr: str):
         """
         Add an EC2 VPC to the stack
         """
@@ -139,7 +143,7 @@ class AWSStack(cdk_core.Stack):
         if not self.ecs_cluster:
             vpc = self.get_vpc()
 
-            cluster_name = f"{resource.get('parameters').get('name')}-{generate_random_cdk_like_suffix()}-ecs-cluster"
+            cluster_name = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-ecs-cluster"
 
             self.ecs_cluster = ecs.Cluster(self, id=cluster_name, vpc=vpc)
 
@@ -153,7 +157,7 @@ class AWSStack(cdk_core.Stack):
         if not self.security_group:
             vpc = self.get_vpc()
             security_group_name = (
-                f"{resource.get('parameters').get('name')}"
+                f"{self.stack_name}"
                 f"-{generate_random_cdk_like_suffix()}-security-group"
             )
             self.security_group = ec2.SecurityGroup(
@@ -193,7 +197,7 @@ class AWSStack(cdk_core.Stack):
         )
         database_name = f"{parameters.get('database_name')}"
         database_instance_identifier = (
-            f"{parameters.get('database_name')}"
+            f"{self.stack_name}"
             f"-{generate_random_cdk_like_suffix()}-db-identifier"
         )
 
@@ -216,25 +220,11 @@ class AWSStack(cdk_core.Stack):
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
-            publicly_accessible=True,
+            publicly_accessible=False,
             security_groups=[database_security_group],
             vpc_subnets=self.vpc.public_subnets[0],
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
-
-        ips = self.get_ips(parameters.get("whitelisted_ips"))
-
-        if self.deployment_env == "PRODUCTION":
-            for ip_address, description in ips.items():
-                database_instance.connections.allow_from(
-                    ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.all_tcp(),
-                    description=description,
-                )
-        else:
-            database_instance.connections.allow_from_any_ipv4(
-                port_range=ec2.Port.all_tcp()
-            )
 
         secretsmanager.Secret.from_secret_complete_arn(self,
                                                        f"{self.stack_name}-database-secret",
@@ -247,6 +237,7 @@ class AWSStack(cdk_core.Stack):
             return self.vpc
 
         vpc = self.add_vpc(
+            name=name,
             cidr=cidr,
         )
         return vpc
@@ -264,7 +255,7 @@ class AWSStack(cdk_core.Stack):
         )
 
         ips = self.get_ips(parameters.get("whitelisted_ips"))
-        load_balancer = self.add_load_balancer(ips=ips)
+        load_balancer = self.add_load_balancer(ips=ips, name=parameters.get("name"))
 
         load_balancing_service = self.add_load_balancing_service(
             load_balancer=load_balancer,
@@ -296,13 +287,10 @@ class AWSStack(cdk_core.Stack):
                 for ip_address, description in ip.items():
                     if ip_address not in ips:
                         ips[ip_address] = description
-        else:
-            for ip_address, description in ips.items():
-                ips[ip_address] = description
 
         return ips
 
-    def add_load_balancer(self, ips: Dict):
+    def add_load_balancer(self, ips: Dict, name: str):
         load_balancer_name = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-load-balancer"
         load_balancer = elb.ApplicationLoadBalancer(
             self, id=load_balancer_name, vpc=self.vpc, internet_facing=True
@@ -316,13 +304,12 @@ class AWSStack(cdk_core.Stack):
             }
         )
 
-        if self.deployment_env == "PRODUCTION":
-            for ip_address, description in ips.items():
-                load_balancer_security_group.add_ingress_rule(
-                    ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.all_tcp(),
-                    description=description,
-                )
+        # for ip_address, description in ips.items():
+        #     load_balancer_security_group.add_ingress_rule(
+        #         ec2.Peer.ipv4(ip_address),
+        #         connection=ec2.Port.all_tcp(),
+        #         description=description,
+        #     )
 
         load_balancer.add_security_group(load_balancer_security_group)
         return load_balancer
@@ -369,7 +356,7 @@ class AWSStack(cdk_core.Stack):
         return task
 
     def add_load_balancing_service(
-            self, load_balancer, repo_name, fargate_task, desired_count = 1
+            self, load_balancer, repo_name, fargate_task, desired_count
     ):
         return ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
