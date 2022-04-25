@@ -85,5 +85,5 @@ def generate(info: Info, environment: str, config: str = None):
             stack_name = config["metadata"]["stack_name"]
 
             write_to_file(
-                template=yaml_content, location=f"deploy/apply/{stack_name}.yaml"
+                template=yaml_content, location=f"deploy/apply/{stack_name}-{environment.lower()}.yaml"
             )
