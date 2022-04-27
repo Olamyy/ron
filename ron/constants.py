@@ -11,7 +11,7 @@ LOGGING_LEVELS = {
 
 
 @dataclasses.dataclass
-class VPC:
+class VPCConfig:
     MAX_AVAILABILITY_ZONE = 2
     SUBNET_NAME = "Public"
     AVAILABILITY_ZONES = ["us-east-1a", "us-east-1b", "us-east-1c"]

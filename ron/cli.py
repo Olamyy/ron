@@ -56,9 +56,9 @@ def cli(info: Info, verbose: int):
 def generate(info: Info, environment: str, config: str = None):
     """Generate Cloudformation YAML."""
 
-    ron_configs = read_ron_config(config)
+    configs = read_ron_config(config)
 
-    if not ron_configs:
+    if not configs:
         click.secho(
             "Could not find config. Are you sure you're running ron from your project root? "
             "You can also pass --config_path to the command to manually pass a path",
@@ -67,13 +67,18 @@ def generate(info: Info, environment: str, config: str = None):
         sys.exit()
 
     else:
-        for config in ron_configs:
+        for config in configs:
             output_directory = tempfile.mkdtemp()
             app = cdk_core.App(outdir=output_directory, auto_synth=True)
 
-            AWSStack(scope=app,
-                     deployment_environment=environment,
-                     config=config).build()
+            stack_name = f"{config.get('metadata')['stack_name']}-{environment}"
+
+            AWSStack(
+                scope=app,
+                stack_name=stack_name,
+                deployment_environment=environment,
+                config=config,
+            ).build()
 
             app.synth(validate_on_synthesis=True)
 
@@ -82,8 +87,6 @@ def generate(info: Info, environment: str, config: str = None):
 
                 yaml_content = to_yaml(content)
 
-            stack_name = config["metadata"]["stack_name"]
-
             write_to_file(
-                template=yaml_content, location=f"deploy/apply/{stack_name}-{environment.lower()}.yaml"
+                template=yaml_content, location=f"deploy/apply/{stack_name}.yaml"
             )
