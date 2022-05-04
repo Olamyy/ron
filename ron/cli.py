@@ -51,9 +51,10 @@ def cli(info: Info, verbose: int):
 @cli.command()
 @click.help_option()
 @click.option("--config", help="Path to your YAML configuration")
+@click.option("-ecr", "--ecr_repo_name", help="ECR Repository Name")
 @click.option("-e", "--environment", help="Environment to deploy to", default="staging")
 @pass_info
-def generate(info: Info, environment: str, config: str = None):
+def generate(info: Info, environment: str, config: str = None, ecr_repo_name: str = None):
     """Generate Cloudformation YAML."""
 
     configs = read_ron_config(config)
@@ -71,12 +72,13 @@ def generate(info: Info, environment: str, config: str = None):
             output_directory = tempfile.mkdtemp()
             app = cdk_core.App(outdir=output_directory, auto_synth=True)
 
-            stack_name = f"{config.get('metadata')['stack_name']}-{environment}"
+            stack_name = f"{config.get('metadata')['stack_name']}"
 
             AWSStack(
                 scope=app,
                 stack_name=stack_name,
                 deployment_environment=environment,
+                ecr_repo_name=ecr_repo_name,
                 config=config,
             ).build()
 

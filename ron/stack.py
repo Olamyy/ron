@@ -1,4 +1,5 @@
 import enum
+import os
 from typing import Mapping, Optional, List, Any
 
 import click
@@ -33,6 +34,7 @@ class AWSStack(cdk_core.Stack):
         deployment_environment: str,
         scope: cdk_core.Construct,
         config: Mapping[str, Any],
+        ecr_repo_name: str,
         **kwargs,
     ) -> None:
         self.config = config
@@ -41,6 +43,7 @@ class AWSStack(cdk_core.Stack):
         super().__init__(scope, env=env, **kwargs)
 
         self.resources = self.extract_resources()
+        self.ecr_repo_name = ecr_repo_name
         self.vpc = None
         self.security_group = None
         self.role = None
@@ -211,7 +214,7 @@ class AWSStack(cdk_core.Stack):
             id=database_resource_id,
             instance_identifier=database_instance_identifier,
             database_name=to_alpha_numeric(
-                f"{parameters.get('database_name', '{self.stack_name}-database')}"
+                f"{parameters.get('database_name', f'{self.stack_name}-database')}"
             ),
             engine=rds.DatabaseInstanceEngine.mysql(
                 version=rds.MysqlEngineVersion.VER_8_0_23
@@ -257,7 +260,7 @@ class AWSStack(cdk_core.Stack):
         repo_name = f"{self.stack_name}-ecr-container"
         memory_limit = parameters.get("memory_limit")
         cpu = parameters.get("cpu")
-        image = self.add_ecr_image(repo_name=repo_name)
+        image = self.add_ecr_image(repo_name=self.ecr_repo_name or f"{self.stack_name}-ecr-repo")
 
         fargate_task_definition = self.add_fargate_task(
             repo_name=repo_name, image=image, memory_limit=memory_limit, cpu=cpu

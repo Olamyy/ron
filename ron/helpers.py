@@ -54,10 +54,7 @@ def read_ron_config(ron_config_path: str = None):
     available_configs = []
 
     for config in ron_configs:
-        full_config_path = os.path.join(
-            str(base_project_path), f"deploy/config/{config}"
-        )
-        with open(full_config_path, "r") as file:
+        with open(config, "r") as file:
             delivery_content = file.read()
             load_env = yaml.load(delivery_content, Loader=yaml.FullLoader)
             if not load_env:
