@@ -12,6 +12,10 @@ def generate_random_cdk_like_suffix():
     return uuid.uuid4().hex[:5].upper()
 
 
+def to_alpha_numeric(name: str):
+    return re.sub(r"[^\w{}]", "", name)
+
+
 def get_hash(name: str):
     return re.sub(r"\W", "", base64.b64encode(name.encode("utf-8")).decode("utf-8"))
 
