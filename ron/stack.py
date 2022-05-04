@@ -122,6 +122,9 @@ class AWSStack(cdk_core.Stack):
                 subnet_configuration=[
                     ec2.SubnetConfiguration(
                         subnet_type=ec2.SubnetType.PUBLIC, name=VPCConfig.SUBNET_NAME
+                    ),
+                    ec2.SubnetConfiguration(
+                        subnet_type=ec2.SubnetType.PRIVATE, name=VPCConfig.PRIVATE_SUBNET
                     )
                 ],
             )
