@@ -119,14 +119,7 @@ class AWSStack(cdk_core.Stack):
                 id=vpc_name,
                 max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
                 cidr=parameters.get("vpc_cidr"),
-                subnet_configuration=[
-                    ec2.SubnetConfiguration(
-                        subnet_type=ec2.SubnetType.PUBLIC, name=VPCConfig.SUBNET_NAME
-                    ),
-                    ec2.SubnetConfiguration(
-                        subnet_type=ec2.SubnetType.PRIVATE, name=VPCConfig.PRIVATE_SUBNET
-                    )
-                ],
+                nat_gateways=1
             )
 
         return self.vpc
@@ -180,18 +173,18 @@ class AWSStack(cdk_core.Stack):
                     peer=ec2.Peer.any_ipv4(),
                     connection=ec2.Port.all_tcp()
                 )
-            else:
-                for ip_address, description in self.get_ips().items():
-                    self.security_group.add_ingress_rule(
-                        ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.tcp(22),
-                        description=description,
-                    )
-                    self.security_group.add_egress_rule(
-                        peer=ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.tcp(22),
-                        description=description,
-                    )
+            # else:
+            #     for ip_address, description in self.get_ips().items():
+            #         self.security_group.add_ingress_rule(
+            #             ec2.Peer.ipv4(ip_address),
+            #             connection=ec2.Port.tcp(22),
+            #             description=description,
+            #         )
+            #         self.security_group.add_egress_rule(
+            #             peer=ec2.Peer.ipv4(ip_address),
+            #             connection=ec2.Port.tcp(22),
+            #             description=description,
+            #         )
 
         return self.security_group
 
@@ -203,19 +196,18 @@ class AWSStack(cdk_core.Stack):
                                                                            "rdsSecurityGroup",
                                                                            self.vpc.vpc_default_security_group)
 
-        if self.allow_public_access():
-            database_security_group.add_ingress_rule(
+        database_security_group.add_ingress_rule(
                 self.security_group,
                 connection=ec2.Port.all_tcp(),
                 remote_rule=True
             )
-        else:
-            for ip_address, description in self.get_ips().items():
-                database_security_group.add_ingress_rule(
-                    ec2.Peer.ipv4(ip_address),
-                    ec2.Port.tcp(22),
-                    description
-                )
+        # else:
+        #     for ip_address, description in self.get_ips().items():
+        #         database_security_group.add_ingress_rule(
+        #             ec2.Peer.ipv4(ip_address),
+        #             ec2.Port.tcp(22),
+        #             description
+        #         )
 
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-db-identifier"
