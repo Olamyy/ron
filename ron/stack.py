@@ -12,7 +12,7 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elb
 from aws_cdk import aws_ecr as ecr
-from aws_cdk.core import Environment, Duration, Aws
+from aws_cdk.core import Environment, Duration, Aws, CfnOutput
 import aws_cdk.aws_secretsmanager as secretsmanager
 
 from ron.constants import VPCConfig, RDSDatabase, LoadBalancer, Fargate, AutoScaler
@@ -199,7 +199,9 @@ class AWSStack(cdk_core.Stack):
         """
         Add a DB Instance to the stack
         """
-        database_security_group = self.add_ec2_security_group()
+        database_security_group = ec2.SecurityGroup.from_security_group_id(self,
+                                                                           "rdsSecurityGroup",
+                                                                           self.vpc.vpc_default_security_group)
 
         if self.allow_public_access():
             database_security_group.add_ingress_rule(
@@ -211,27 +213,12 @@ class AWSStack(cdk_core.Stack):
             for ip_address, description in self.get_ips().items():
                 database_security_group.add_ingress_rule(
                     ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.tcp(22),
-                    description=description,
-                )
-                database_security_group.add_egress_rule(
-                    peer=ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.tcp(22),
-                    description=description,
+                    ec2.Port.tcp(22),
+                    description
                 )
 
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-db-identifier"
-
-        rds_vpc = ec2.Vpc(
-            self,
-            id="rds-vpc",
-            subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    subnet_type=ec2.SubnetType.PUBLIC, name=VPCConfig.SUBNET_NAME
-                )
-            ],
-        )
 
         database_instance = rds.DatabaseInstance(
             self,
@@ -248,7 +235,7 @@ class AWSStack(cdk_core.Stack):
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
-            vpc=rds_vpc,
+            vpc=self.vpc,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
@@ -313,6 +300,10 @@ class AWSStack(cdk_core.Stack):
         scalable_target.scale_on_memory_utilization(
             "MemoryScaling", target_utilization_percent=AutoScaler.PERCENT
         )
+
+        CfnOutput(self,
+                  "LoadBalancerHost",
+                  value=load_balancing_service.load_balancer.load_balancer_dns_name)
 
     def get_ips(self):
         user_ips = self.config.get("metadata")["whitelisted_ips"]
