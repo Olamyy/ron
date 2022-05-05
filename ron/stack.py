@@ -16,7 +16,7 @@ from aws_cdk.core import Environment, Duration, Aws, CfnOutput
 import aws_cdk.aws_secretsmanager as secretsmanager
 
 from ron.constants import VPCConfig, RDSDatabase, LoadBalancer, Fargate, AutoScaler
-from ron.helpers import to_alpha_numeric
+from ron.helpers import to_alpha_numeric, generate_random_cdk_like_suffix
 
 
 class AWSResources(enum.Enum):
@@ -119,7 +119,7 @@ class AWSStack(cdk_core.Stack):
                 id=vpc_name,
                 max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
                 cidr=parameters.get("vpc_cidr"),
-                nat_gateways=1
+                nat_gateways=2
             )
 
         return self.vpc
@@ -162,6 +162,8 @@ class AWSStack(cdk_core.Stack):
                 vpc=vpc,
                 allow_all_outbound=True
             )
+
+            print(self.allow_public_access())
 
             if self.allow_public_access():
                 self.security_group.add_ingress_rule(
@@ -220,7 +222,7 @@ class AWSStack(cdk_core.Stack):
             enable_dns_support=True
         )
         database_resource_id = f"{self.stack_name}-db-instance"
-        database_instance_identifier = f"{self.stack_name}-dbidentifier"
+        database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
 
         database_instance = rds.DatabaseInstance(
             self,
@@ -315,7 +317,7 @@ class AWSStack(cdk_core.Stack):
                   value=load_balancing_service.load_balancer.load_balancer_dns_name)
 
     def get_ips(self):
-        user_ips = self.config.get("metadata")["whitelisted_ips"]
+        user_ips = self.config.get("metadata").get('whitelisted_ips')
         ips = LoadBalancer.PRODUCTION_WHITELISTED_IPS
         if user_ips:
             for ip in user_ips:
@@ -396,4 +398,4 @@ class AWSStack(cdk_core.Stack):
         )
 
     def allow_public_access(self):
-        return self.environment not in ["staging", "production"]
+        return self.deployment_environment not in ["staging", "production"]
