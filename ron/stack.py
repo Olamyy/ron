@@ -1,5 +1,4 @@
 import enum
-import os
 from typing import Mapping, Optional, List, Any
 
 import click
@@ -195,20 +194,26 @@ class AWSStack(cdk_core.Stack):
         """
         vpc = ec2.Vpc(
             self,
-            id="VPC",
+            id=f"{self.stack_name}-rds-vpc",
             cidr="10.0.0.0/16",
             max_azs=2,
             nat_gateways=1,
             subnet_configuration=[
                 ec2.SubnetConfiguration(
-                    name="public", cidr_mask=24,
-                    reserved=False, subnet_type=ec2.SubnetType.PUBLIC),
+                    name="public",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PUBLIC),
                 ec2.SubnetConfiguration(
-                    name="private", cidr_mask=24,
-                    reserved=False, subnet_type=ec2.SubnetType.PRIVATE),
+                    name="private",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PRIVATE),
                 ec2.SubnetConfiguration(
-                    name="DB", cidr_mask=24,
-                    reserved=False, subnet_type=ec2.SubnetType.ISOLATED
+                    name="DB",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.ISOLATED
                 ),
             ],
             enable_dns_hostnames=True,
@@ -226,7 +231,7 @@ class AWSStack(cdk_core.Stack):
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE
+                subnet_type=ec2.SubnetType.PUBLIC
             ),
             port=parameters.get("database_port"),
             instance_type=ec2.InstanceType.of(
