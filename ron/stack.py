@@ -12,6 +12,7 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elb
 from aws_cdk import aws_ecr as ecr
+from aws_cdk import aws_cloudwatch as cloudwatch
 from aws_cdk.core import Environment, Duration, Aws, CfnOutput
 import aws_cdk.aws_secretsmanager as secretsmanager
 
@@ -173,18 +174,18 @@ class AWSStack(cdk_core.Stack):
                     peer=ec2.Peer.any_ipv4(),
                     connection=ec2.Port.all_tcp()
                 )
-            # else:
-            #     for ip_address, description in self.get_ips().items():
-            #         self.security_group.add_ingress_rule(
-            #             ec2.Peer.ipv4(ip_address),
-            #             connection=ec2.Port.tcp(22),
-            #             description=description,
-            #         )
-            #         self.security_group.add_egress_rule(
-            #             peer=ec2.Peer.ipv4(ip_address),
-            #             connection=ec2.Port.tcp(22),
-            #             description=description,
-            #         )
+            else:
+                for ip_address, description in self.get_ips().items():
+                    self.security_group.add_ingress_rule(
+                        ec2.Peer.ipv4(ip_address),
+                        connection=ec2.Port.tcp(22),
+                        description=description,
+                    )
+                    self.security_group.add_egress_rule(
+                        peer=ec2.Peer.ipv4(ip_address),
+                        connection=ec2.Port.tcp(22),
+                        description=description,
+                    )
 
         return self.security_group
 
@@ -192,25 +193,29 @@ class AWSStack(cdk_core.Stack):
         """
         Add a DB Instance to the stack
         """
-        database_security_group = ec2.SecurityGroup.from_security_group_id(self,
-                                                                           "rdsSecurityGroup",
-                                                                           self.vpc.vpc_default_security_group)
-
-        database_security_group.add_ingress_rule(
-            self.security_group,
-            connection=ec2.Port.all_tcp(),
-            remote_rule=True
+        vpc = ec2.Vpc(
+            self,
+            id="VPC",
+            cidr="10.0.0.0/16",
+            max_azs=2,
+            nat_gateways=1,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="public", cidr_mask=24,
+                    reserved=False, subnet_type=ec2.SubnetType.PUBLIC),
+                ec2.SubnetConfiguration(
+                    name="private", cidr_mask=24,
+                    reserved=False, subnet_type=ec2.SubnetType.PRIVATE),
+                ec2.SubnetConfiguration(
+                    name="DB", cidr_mask=24,
+                    reserved=False, subnet_type=ec2.SubnetType.ISOLATED
+                ),
+            ],
+            enable_dns_hostnames=True,
+            enable_dns_support=True
         )
-        # else:
-        #     for ip_address, description in self.get_ips().items():
-        #         database_security_group.add_ingress_rule(
-        #             ec2.Peer.ipv4(ip_address),
-        #             ec2.Port.tcp(22),
-        #             description
-        #         )
-
         database_resource_id = f"{self.stack_name}-db-instance"
-        database_instance_identifier = "some-db"
+        database_instance_identifier = f"{self.stack_name}-dbidentifier"
 
         database_instance = rds.DatabaseInstance(
             self,
@@ -227,7 +232,7 @@ class AWSStack(cdk_core.Stack):
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
-            vpc=self.vpc,
+            vpc=vpc,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
@@ -235,12 +240,18 @@ class AWSStack(cdk_core.Stack):
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
             publicly_accessible=True,
-            security_groups=[database_security_group],
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
 
-        if self.allow_public_access():
-            database_instance.connections.allow_default_port_from_any_ipv4()
+        cloudwatch.Alarm(
+            self,
+            id="HighCPU",
+            metric=database_instance.metric_cpu_utilization(),
+            threshold=90,
+            evaluation_periods=1
+        )
+
+        database_instance.connections.allow_default_port_from_any_ipv4()
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
