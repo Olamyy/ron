@@ -210,7 +210,7 @@ class AWSStack(cdk_core.Stack):
         #         )
 
         database_resource_id = f"{self.stack_name}-db-instance"
-        database_instance_identifier = f"{self.stack_name}-db-identifier"
+        database_instance_identifier = "some-db"
 
         database_instance = rds.DatabaseInstance(
             self,
