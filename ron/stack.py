@@ -231,7 +231,7 @@ class AWSStack(cdk_core.Stack):
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PUBLIC
+                subnet_type=ec2.SubnetType.PUBLIC if self.allow_public_access() else ec2.SubnetType.PRIVATE
             ),
             port=parameters.get("database_port"),
             instance_type=ec2.InstanceType.of(
@@ -396,4 +396,4 @@ class AWSStack(cdk_core.Stack):
         )
 
     def allow_public_access(self):
-        return "whitelisted_ips" not in self.config.get("metadata")
+        return self.environment not in ["staging", "production"]
