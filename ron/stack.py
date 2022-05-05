@@ -224,9 +224,7 @@ class AWSStack(cdk_core.Stack):
             self,
             id=database_resource_id,
             instance_identifier=database_instance_identifier,
-            database_name=to_alpha_numeric(
-                f"{parameters.get('database_name', f'{self.stack_name}-database')}"
-            ),
+            database_name=to_alpha_numeric(f'{self.stack_name}-database'),
             engine=rds.DatabaseInstanceEngine.mysql(
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
