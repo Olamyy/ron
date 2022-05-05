@@ -164,12 +164,21 @@ class AWSStack(cdk_core.Stack):
             vpc = self.get_vpc()
             security_group_name = f"{self.stack_name}-sg"
             self.security_group = ec2.SecurityGroup(
-                self, id=security_group_name, vpc=vpc, allow_all_outbound=True
+                self,
+                id=security_group_name,
+                vpc=vpc,
+                allow_all_outbound=True
             )
 
             if self.allow_public_access():
+                self.security_group.add_ingress_rule(
+                    self.security_group,
+                    connection=ec2.Port.all_tcp(),
+                    remote_rule=True
+                )
                 self.security_group.add_egress_rule(
-                    peer=ec2.Peer.any_ipv4(), connection=ec2.Port.all_tcp()
+                    peer=ec2.Peer.any_ipv4(),
+                    connection=ec2.Port.all_tcp()
                 )
             else:
                 for ip_address, description in self.get_ips().items():
@@ -194,7 +203,9 @@ class AWSStack(cdk_core.Stack):
 
         if self.allow_public_access():
             database_security_group.add_ingress_rule(
-                self.security_group, connection=ec2.Port.all_tcp(), remote_rule=True
+                self.security_group,
+                connection=ec2.Port.all_tcp(),
+                remote_rule=True
             )
         else:
             for ip_address, description in self.get_ips().items():
@@ -212,6 +223,16 @@ class AWSStack(cdk_core.Stack):
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-db-identifier"
 
+        rds_vpc = ec2.Vpc(
+            self,
+            id="rds-vpc",
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    subnet_type=ec2.SubnetType.PUBLIC, name=VPCConfig.SUBNET_NAME
+                )
+            ],
+        )
+
         database_instance = rds.DatabaseInstance(
             self,
             id=database_resource_id,
@@ -223,11 +244,11 @@ class AWSStack(cdk_core.Stack):
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
             vpc_subnets=ec2.SubnetType.PUBLIC,
-            vpc=self.vpc,
             port=parameters.get("database_port"),
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
+            vpc=rds_vpc,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
