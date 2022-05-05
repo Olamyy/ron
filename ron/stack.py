@@ -119,7 +119,7 @@ class AWSStack(cdk_core.Stack):
                 id=vpc_name,
                 max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
                 cidr=parameters.get("vpc_cidr"),
-                nat_gateways=2
+                nat_gateways=1
             )
 
         return self.vpc
