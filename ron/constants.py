@@ -28,10 +28,10 @@ class RDSDatabase:
 @dataclasses.dataclass
 class LoadBalancer:
     PRODUCTION_WHITELISTED_IPS = {"3.139.112.56/32": "Prod Server",
-                                  "72.182.225.88": "Ola",
-                                  "24.6.101.89/24": "Jing",
-                                  "73.153.90.239/24": "Alanna",
-                                  "76.109.90.46/24": "Silke"}
+                                  "72.182.225.88/32": "Ola",
+                                  "24.6.101.89/32": "Jing",
+                                  "73.153.90.239/32": "Alanna",
+                                  "76.109.90.46/32": "Silke"}
 
 
 @dataclasses.dataclass
