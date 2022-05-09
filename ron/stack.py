@@ -320,10 +320,9 @@ class AWSStack(cdk_core.Stack):
         user_ips = self.config.get("metadata").get('whitelisted_ips')
         ips = LoadBalancer.PRODUCTION_WHITELISTED_IPS
         if user_ips:
-            for ip in user_ips:
-                for ip_address, description in ip.items():
-                    if ip_address not in ips:
-                        ips[ip_address] = description
+            for ip_address, description in ips.items():
+                if ip_address not in ips:
+                    ips[ip_address] = description
 
         return ips
 
