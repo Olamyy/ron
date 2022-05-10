@@ -179,12 +179,12 @@ class AWSStack(cdk_core.Stack):
                 for ip_address, description in self.get_ips().items():
                     self.security_group.add_ingress_rule(
                         ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.tcp(22),
+                        connection=ec2.Port.all_tcp(),
                         description=description,
                     )
                     self.security_group.add_egress_rule(
                         peer=ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.tcp(22),
+                        connection=ec2.Port.all_tcp(),
                         description=description,
                     )
 
@@ -240,6 +240,7 @@ class AWSStack(cdk_core.Stack):
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
             vpc=vpc,
+            security_groups=[self.security_group],
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
@@ -258,7 +259,7 @@ class AWSStack(cdk_core.Stack):
             evaluation_periods=1
         )
 
-        database_instance.connections.allow_default_port_from_any_ipv4()
+        database_instance.connections.allow_from_any_ipv4(ec2.Port.all_tcp())
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
