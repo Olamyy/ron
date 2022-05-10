@@ -246,7 +246,7 @@ class AWSStack(cdk_core.Stack):
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
-            publicly_accessible=True,
+            publicly_accessible=self.allow_public_access(),
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
 
