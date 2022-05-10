@@ -1,8 +1,6 @@
 import dataclasses
 import logging
 
-import requests
-
 LOGGING_LEVELS = {
     0: logging.NOTSET,
     1: logging.ERROR,
