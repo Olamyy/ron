@@ -220,28 +220,6 @@ class AWSStack(cdk_core.Stack):
             enable_dns_support=True
         )
 
-        if self.allow_public_access():
-            db_security_group = ec2.SecurityGroup(
-                self,
-                id=f"{self.stack_name}-rds-security-group",
-                vpc=vpc,
-                allow_all_outbound=True
-            )
-
-            for ip_address, description in self.get_ips().items():
-                db_security_group.add_ingress_rule(
-                    ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.all_tcp(),
-                    description=description,
-                )
-                db_security_group.add_egress_rule(
-                    peer=ec2.Peer.ipv4(ip_address),
-                    connection=ec2.Port.all_tcp(),
-                    description=description,
-                )
-        else:
-            db_security_group = self.security_group
-
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
 
@@ -261,8 +239,8 @@ class AWSStack(cdk_core.Stack):
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
             vpc=vpc,
-            security_groups=[db_security_group],
             storage_type=rds.StorageType.GP2,
+            security_groups=[vpc.vpc_default_security_group],
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
