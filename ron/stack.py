@@ -240,7 +240,6 @@ class AWSStack(cdk_core.Stack):
             ),
             vpc=vpc,
             storage_type=rds.StorageType.GP2,
-            security_groups=[vpc.vpc_default_security_group],
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
