@@ -163,8 +163,6 @@ class AWSStack(cdk_core.Stack):
                 allow_all_outbound=True
             )
 
-            print(self.allow_public_access())
-
             if self.allow_public_access():
                 self.security_group.add_ingress_rule(
                     self.security_group,
@@ -221,6 +219,29 @@ class AWSStack(cdk_core.Stack):
             enable_dns_hostnames=True,
             enable_dns_support=True
         )
+
+        if self.allow_public_access():
+            db_security_group = ec2.SecurityGroup(
+                self,
+                id=f"{self.stack_name}-rds-security-group",
+                vpc=vpc,
+                allow_all_outbound=True
+            )
+
+            for ip_address, description in self.get_ips().items():
+                db_security_group.add_ingress_rule(
+                    ec2.Peer.ipv4(ip_address),
+                    connection=ec2.Port.all_tcp(),
+                    description=description,
+                )
+                db_security_group.add_egress_rule(
+                    peer=ec2.Peer.ipv4(ip_address),
+                    connection=ec2.Port.all_tcp(),
+                    description=description,
+                )
+        else:
+            db_security_group = self.security_group
+
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
 
@@ -240,7 +261,7 @@ class AWSStack(cdk_core.Stack):
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
             vpc=vpc,
-            security_groups=[self.security_group],
+            security_groups=[db_security_group],
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
