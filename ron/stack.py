@@ -224,25 +224,6 @@ class AWSStack(cdk_core.Stack):
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
 
-        db_security_group = ec2.SecurityGroup(
-                self,
-                id=f"{database_instance_identifier}-sg",
-                vpc=vpc,
-                allow_all_outbound=True
-            )
-
-        for ip_address, description in self.get_ips().items():
-            db_security_group.add_ingress_rule(
-                ec2.Peer.ipv4(ip_address),
-                connection=ec2.Port.all_tcp(),
-                description=description,
-            )
-            db_security_group.add_egress_rule(
-                peer=ec2.Peer.ipv4(ip_address),
-                connection=ec2.Port.all_tcp(),
-                description=description,
-            )
-
         database_instance = rds.DatabaseInstance(
             self,
             id=database_resource_id,
@@ -265,7 +246,7 @@ class AWSStack(cdk_core.Stack):
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
-            publicly_accessible=self.allow_public_access(),
+            publicly_accessible=True,
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
 
