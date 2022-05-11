@@ -259,9 +259,6 @@ class AWSStack(cdk_core.Stack):
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
             vpc=vpc,
-            security_groups=[
-                db_security_group
-            ],
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
