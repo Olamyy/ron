@@ -205,28 +205,28 @@ class AWSStack(cdk_core.Stack):
             ]
         )
 
-        db_security_group = ec2.SecurityGroup(
-                self,
-                id=f"{database_instance_identifier}-sg",
-                vpc=self.vpc,
-                allow_all_outbound=True
-            )
+        # db_security_group = ec2.SecurityGroup(
+        #         self,
+        #         id=f"{database_instance_identifier}-sg",
+        #         vpc=self.vpc,
+        #         allow_all_outbound=True
+        #     )
+        #
+        # for ip_address, description in self.get_ips().items():
+        #     db_security_group.add_ingress_rule(
+        #         ec2.Peer.ipv4(ip_address),
+        #         connection=ec2.Port.all_tcp(),
+        #         description=description,
+        #     )
+        #     db_security_group.add_egress_rule(
+        #         peer=ec2.Peer.ipv4(ip_address),
+        #         connection=ec2.Port.all_tcp(),
+        #         description=description,
+        #     )
 
-        for ip_address, description in self.get_ips().items():
-            db_security_group.add_ingress_rule(
-                ec2.Peer.ipv4(ip_address),
-                connection=ec2.Port.all_tcp(),
-                description=description,
-            )
-            db_security_group.add_egress_rule(
-                peer=ec2.Peer.ipv4(ip_address),
-                connection=ec2.Port.all_tcp(),
-                description=description,
-            )
-
-        db_security_group.connections.allow_internally(
-            ec2.Port.all_tcp()
-        )
+        # db_security_group.connections.allow_internally(
+        #     ec2.Port.all_tcp()
+        # )
 
         database_instance = rds.DatabaseInstance(
             self,
