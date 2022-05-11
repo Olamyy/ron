@@ -12,6 +12,7 @@ from aws_cdk import aws_ecs_patterns as ecs_patterns
 from aws_cdk import aws_elasticloadbalancingv2 as elb
 from aws_cdk import aws_ecr as ecr
 from aws_cdk import aws_cloudwatch as cloudwatch
+from aws_cdk.aws_rds import CfnDBSubnetGroup
 from aws_cdk.core import Environment, Duration, Aws, CfnOutput
 import aws_cdk.aws_secretsmanager as secretsmanager
 
@@ -49,6 +50,33 @@ class AWSStack(cdk_core.Stack):
         self.role = None
         self.ecs_cluster = None
         self.logger = None
+        self.vpc = ec2.Vpc(
+            self,
+            id=f"{self.stack_name}-vpc",
+            cidr="10.0.0.0/16",
+            max_azs=2,
+            nat_gateways=1,
+            subnet_configuration=[
+                ec2.SubnetConfiguration(
+                    name="public",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PUBLIC),
+                ec2.SubnetConfiguration(
+                    name="private",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PRIVATE),
+                ec2.SubnetConfiguration(
+                    name="DB",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.ISOLATED
+                ),
+            ],
+            enable_dns_hostnames=True,
+            enable_dns_support=True
+        )
 
     def extract_resources(self):
         if "resources" not in self.config:
@@ -63,8 +91,6 @@ class AWSStack(cdk_core.Stack):
             parameters = resource.get("parameters")
             if resource_type == AWSResources.IAM_ROLE.value:
                 self.add_role(parameters)
-            elif resource_type == AWSResources.VPC.value:
-                self.add_vpc(parameters)
             elif resource_type == AWSResources.ECS_CLUSTER.value:
                 self.add_ecs_cluster()
             elif resource_type == AWSResources.EC2_SECURITY_GROUP.value:
@@ -107,43 +133,17 @@ class AWSStack(cdk_core.Stack):
 
         return self.role
 
-    def add_vpc(self, parameters: Mapping[str, Any]):
-        """
-        Add an EC2 VPC to the stack
-        """
-
-        if not self.vpc:
-            vpc_name = f"{self.stack_name}-vpc"
-            self.vpc = ec2.Vpc(
-                self,
-                id=vpc_name,
-                max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
-                cidr=parameters.get("vpc_cidr"),
-                nat_gateways=1
-            )
-
-        return self.vpc
-
-    def get_vpc(self, name: Optional[str] = None, cidr: Optional[str] = None):
-        if not name or cidr:
-            return self.vpc
-
-        vpc = self.add_vpc({"vpc_cidr": cidr})
-        return vpc
-
     def add_ecs_cluster(self):
         """
         Add ECS Cluster
         """
         if not self.ecs_cluster:
-            vpc = self.get_vpc()
-
             cluster_name = f"{self.stack_name}-ecs-cluster"
 
             self.ecs_cluster = ecs.Cluster(
                 self,
                 id=cluster_name,
-                vpc=vpc,
+                vpc=self.vpc,
                 container_insights=True
             )
 
@@ -154,12 +154,11 @@ class AWSStack(cdk_core.Stack):
         Add EC2 Security Group
         """
         if not self.security_group:
-            vpc = self.get_vpc()
             security_group_name = f"{self.stack_name}-sg"
             self.security_group = ec2.SecurityGroup(
                 self,
                 id=security_group_name,
-                vpc=vpc,
+                vpc=self.vpc,
                 allow_all_outbound=True
             )
 
@@ -192,36 +191,42 @@ class AWSStack(cdk_core.Stack):
         """
         Add a DB Instance to the stack
         """
-        vpc = ec2.Vpc(
-            self,
-            id=f"{self.stack_name}-rds-vpc",
-            cidr="10.0.0.0/16",
-            max_azs=2,
-            nat_gateways=1,
-            subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    name="public",
-                    cidr_mask=24,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.PUBLIC),
-                ec2.SubnetConfiguration(
-                    name="private",
-                    cidr_mask=24,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.PRIVATE),
-                ec2.SubnetConfiguration(
-                    name="DB",
-                    cidr_mask=24,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.ISOLATED
-                ),
-            ],
-            enable_dns_hostnames=True,
-            enable_dns_support=True
-        )
 
         database_resource_id = f"{self.stack_name}-db-instance"
         database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
+
+        subnet_group = CfnDBSubnetGroup(
+            self,
+            id="db-subnet-group",
+            db_subnet_group_description='Subnet group to access mysql',
+            db_subnet_group_name=f'{database_instance_identifier}-subnet-group',
+            subnet_ids=[
+                subnet.subnet_id for subnet in self.vpc.isolated_subnets
+            ]
+        )
+
+        db_security_group = ec2.SecurityGroup(
+                self,
+                id=f"{database_instance_identifier}-sg",
+                vpc=self.vpc,
+                allow_all_outbound=True
+            )
+
+        for ip_address, description in self.get_ips().items():
+            db_security_group.add_ingress_rule(
+                ec2.Peer.ipv4(ip_address),
+                connection=ec2.Port.all_tcp(),
+                description=description,
+            )
+            db_security_group.add_egress_rule(
+                peer=ec2.Peer.ipv4(ip_address),
+                connection=ec2.Port.all_tcp(),
+                description=description,
+            )
+
+        db_security_group.connections.allow_internally(
+            ec2.Port.all_tcp()
+        )
 
         database_instance = rds.DatabaseInstance(
             self,
@@ -238,7 +243,11 @@ class AWSStack(cdk_core.Stack):
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
-            vpc=vpc,
+            vpc=self.vpc,
+            security_groups=[
+                db_security_group
+            ],
+            subnet_group=subnet_group,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
