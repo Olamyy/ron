@@ -247,7 +247,7 @@ class AWSStack(cdk_core.Stack):
             # security_groups=[
             #     db_security_group
             # ],
-            subnet_group=subnet_group,
+            # subnet_group=subnet_group,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
