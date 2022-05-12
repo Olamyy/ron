@@ -174,18 +174,18 @@ class AWSStack(cdk_core.Stack):
                     peer=ec2.Peer.any_ipv4(),
                     connection=ec2.Port.all_tcp()
                 )
-            else:
-                for ip_address, description in self.get_ips().items():
-                    self.security_group.add_ingress_rule(
-                        ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.all_tcp(),
-                        description=description,
-                    )
-                    self.security_group.add_egress_rule(
-                        peer=ec2.Peer.ipv4(ip_address),
-                        connection=ec2.Port.all_tcp(),
-                        description=description,
-                    )
+            # else:
+            #     for ip_address, description in self.get_ips().items():
+            #         self.security_group.add_ingress_rule(
+            #             ec2.Peer.ipv4(ip_address),
+            #             connection=ec2.Port.all_tcp(),
+            #             description=description,
+            #         )
+            #         self.security_group.add_egress_rule(
+            #             peer=ec2.Peer.ipv4(ip_address),
+            #             connection=ec2.Port.all_tcp(),
+            #             description=description,
+            #         )
 
         return self.security_group
 
