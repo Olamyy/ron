@@ -253,7 +253,8 @@ class AWSStack(cdk_core.Stack):
 
             for ip_address, description in self.get_ips().items():
                 database_instance.connections.allow_default_port_from(
-                    ec2.Peer.ipv4(ip_address)
+                    ec2.Peer.ipv4(ip_address),
+                    description=description
                 )
 
         else:
