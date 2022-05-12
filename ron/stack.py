@@ -256,6 +256,9 @@ class AWSStack(cdk_core.Stack):
                     ec2.Peer.ipv4(ip_address)
                 )
 
+        else:
+            database_instance.connections.allow_from_any_ipv4()
+
         secretsmanager.Secret.from_secret_complete_arn(
             self,
             f"{self.stack_name}-database-secret",
@@ -400,7 +403,7 @@ class AWSStack(cdk_core.Stack):
             id=f"{self.stack_name}-{repo_name}-lb-service",
             cluster=self.ecs_cluster,
             task_definition=fargate_task,
-            desired_count=desired_count,
+            desired_count=1 if self.allow_public_access() else desired_count,
             assign_public_ip=True,
             security_groups=[self.security_group],
             open_listener=self.allow_public_access(),
