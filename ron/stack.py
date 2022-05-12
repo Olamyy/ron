@@ -190,26 +190,20 @@ class AWSStack(cdk_core.Stack):
                 cidr_mask=24,
                 reserved=False,
                 subnet_type=ec2.SubnetType.PUBLIC,
-            )
+            ),
+            ec2.SubnetConfiguration(
+                name="private",
+                cidr_mask=26,
+                reserved=False,
+                subnet_type=ec2.SubnetType.PRIVATE,
+            ),
+            ec2.SubnetConfiguration(
+                name="DB",
+                cidr_mask=26,
+                reserved=False,
+                subnet_type=ec2.SubnetType.ISOLATED,
+            ),
         ]
-
-        if not self.allow_public_access():
-            subnets.extend(
-                [
-                    ec2.SubnetConfiguration(
-                        name="private",
-                        cidr_mask=26,
-                        reserved=False,
-                        subnet_type=ec2.SubnetType.PRIVATE,
-                    ),
-                    ec2.SubnetConfiguration(
-                        name="DB",
-                        cidr_mask=26,
-                        reserved=False,
-                        subnet_type=ec2.SubnetType.ISOLATED,
-                    ),
-                ]
-            )
 
         vpc = ec2.Vpc(
             self,
