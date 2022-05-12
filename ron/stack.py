@@ -257,7 +257,7 @@ class AWSStack(cdk_core.Stack):
                 )
 
         else:
-            database_instance.connections.allow_from_any_ipv4()
+            database_instance.connections.allow_default_port_from_any_ipv4()
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
