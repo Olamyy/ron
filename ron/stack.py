@@ -166,7 +166,7 @@ class AWSStack(cdk_core.Stack):
 
             if self.allow_public_access():
                 self.security_group.add_ingress_rule(
-                    self.security_group,
+                    ec2.Peer.any_ipv4(),
                     connection=ec2.Port.all_tcp(),
                     remote_rule=True
                 )
@@ -174,18 +174,18 @@ class AWSStack(cdk_core.Stack):
                     peer=ec2.Peer.any_ipv4(),
                     connection=ec2.Port.all_tcp()
                 )
-            # else:
-            #     for ip_address, description in self.get_ips().items():
-            #         self.security_group.add_ingress_rule(
-            #             ec2.Peer.ipv4(ip_address),
-            #             connection=ec2.Port.all_tcp(),
-            #             description=description,
-            #         )
-            #         self.security_group.add_egress_rule(
-            #             peer=ec2.Peer.ipv4(ip_address),
-            #             connection=ec2.Port.all_tcp(),
-            #             description=description,
-            #         )
+            else:
+                for ip_address, description in self.get_ips().items():
+                    self.security_group.add_ingress_rule(
+                        ec2.Peer.ipv4(ip_address),
+                        connection=ec2.Port.all_tcp(),
+                        description=description,
+                    )
+                    self.security_group.add_egress_rule(
+                        peer=ec2.Peer.ipv4(ip_address),
+                        connection=ec2.Port.all_tcp(),
+                        description=description,
+                    )
 
         return self.security_group
 
@@ -207,12 +207,12 @@ class AWSStack(cdk_core.Stack):
                     subnet_type=ec2.SubnetType.PUBLIC),
                 ec2.SubnetConfiguration(
                     name="private",
-                    cidr_mask=24,
+                    cidr_mask=26,
                     reserved=False,
                     subnet_type=ec2.SubnetType.PRIVATE),
                 ec2.SubnetConfiguration(
                     name="DB",
-                    cidr_mask=24,
+                    cidr_mask=26,
                     reserved=False,
                     subnet_type=ec2.SubnetType.ISOLATED
                 ),
@@ -250,15 +250,12 @@ class AWSStack(cdk_core.Stack):
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
 
-        cloudwatch.Alarm(
-            self,
-            id="HighCPU",
-            metric=database_instance.metric_cpu_utilization(),
-            threshold=90,
-            evaluation_periods=1
+        database_instance.connections.allow_default_port_from(
+            ec2.Peer.ipv4('47.28.194.49/28')
         )
-
-        database_instance.connections.allow_from_any_ipv4(ec2.Port.all_tcp())
+        database_instance.connections.allow_default_port_from(
+            ec2.Peer.ipv4('10.0.0.0/16')
+        )
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
