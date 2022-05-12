@@ -54,7 +54,9 @@ def cli(info: Info, verbose: int):
 @click.option("-ecr", "--ecr_repo_name", help="ECR Repository Name")
 @click.option("-e", "--environment", help="Environment to deploy to", default="staging")
 @pass_info
-def generate(info: Info, environment: str, config: str = None, ecr_repo_name: str = None):
+def generate(
+    info: Info, environment: str, config: str = None, ecr_repo_name: str = None
+):
     """Generate Cloudformation YAML."""
 
     configs = read_ron_config(config)

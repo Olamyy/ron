@@ -31,12 +31,12 @@ class AWSResources(enum.Enum):
 
 class AWSStack(cdk_core.Stack):
     def __init__(
-            self,
-            deployment_environment: str,
-            scope: cdk_core.Construct,
-            config: Mapping[str, Any],
-            ecr_repo_name: str,
-            **kwargs,
+        self,
+        deployment_environment: str,
+        scope: cdk_core.Construct,
+        config: Mapping[str, Any],
+        ecr_repo_name: str,
+        **kwargs,
     ) -> None:
         self.config = config
         self.deployment_environment = deployment_environment
@@ -120,7 +120,7 @@ class AWSStack(cdk_core.Stack):
                 id=vpc_name,
                 max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
                 cidr=parameters.get("vpc_cidr"),
-                nat_gateways=1
+                nat_gateways=1,
             )
 
         return self.vpc
@@ -142,10 +142,7 @@ class AWSStack(cdk_core.Stack):
             cluster_name = f"{self.stack_name}-ecs-cluster"
 
             self.ecs_cluster = ecs.Cluster(
-                self,
-                id=cluster_name,
-                vpc=vpc,
-                container_insights=True
+                self, id=cluster_name, vpc=vpc, container_insights=True
             )
 
         return self.ecs_cluster
@@ -158,21 +155,15 @@ class AWSStack(cdk_core.Stack):
             vpc = self.get_vpc()
             security_group_name = f"{self.stack_name}-sg"
             self.security_group = ec2.SecurityGroup(
-                self,
-                id=security_group_name,
-                vpc=vpc,
-                allow_all_outbound=True
+                self, id=security_group_name, vpc=vpc, allow_all_outbound=True
             )
 
             if self.allow_public_access():
                 self.security_group.add_ingress_rule(
-                    ec2.Peer.any_ipv4(),
-                    connection=ec2.Port.all_tcp(),
-                    remote_rule=True
+                    ec2.Peer.any_ipv4(), connection=ec2.Port.all_tcp(), remote_rule=True
                 )
                 self.security_group.add_egress_rule(
-                    peer=ec2.Peer.any_ipv4(),
-                    connection=ec2.Port.all_tcp()
+                    peer=ec2.Peer.any_ipv4(), connection=ec2.Port.all_tcp()
                 )
             else:
                 for ip_address, description in self.get_ips().items():
@@ -193,47 +184,58 @@ class AWSStack(cdk_core.Stack):
         """
         Add a DB Instance to the stack
         """
+        subnets = [
+            ec2.SubnetConfiguration(
+                name="Public",
+                cidr_mask=24,
+                reserved=False,
+                subnet_type=ec2.SubnetType.PUBLIC,
+            )
+        ]
+
+        if not self.allow_public_access():
+            subnets.extend(
+                [
+                    ec2.SubnetConfiguration(
+                        name="private",
+                        cidr_mask=26,
+                        reserved=False,
+                        subnet_type=ec2.SubnetType.PRIVATE,
+                    ),
+                    ec2.SubnetConfiguration(
+                        name="DB",
+                        cidr_mask=26,
+                        reserved=False,
+                        subnet_type=ec2.SubnetType.ISOLATED,
+                    ),
+                ]
+            )
+
         vpc = ec2.Vpc(
             self,
             id=f"{self.stack_name}-rds-vpc",
             cidr="10.0.0.0/16",
             max_azs=2,
             nat_gateways=1,
-            subnet_configuration=[
-                ec2.SubnetConfiguration(
-                    name="public",
-                    cidr_mask=24,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.PUBLIC),
-                ec2.SubnetConfiguration(
-                    name="private",
-                    cidr_mask=26,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.PRIVATE),
-                ec2.SubnetConfiguration(
-                    name="DB",
-                    cidr_mask=26,
-                    reserved=False,
-                    subnet_type=ec2.SubnetType.ISOLATED
-                ),
-            ],
+            subnet_configuration=subnets,
             enable_dns_hostnames=True,
-            enable_dns_support=True
+            enable_dns_support=True,
         )
-
-        database_resource_id = f"{self.stack_name}-db-instance"
-        database_instance_identifier = f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier"
 
         database_instance = rds.DatabaseInstance(
             self,
-            id=database_resource_id,
-            instance_identifier=database_instance_identifier,
-            database_name=to_alpha_numeric(parameters.get('database_name', f'{self.stack_name}-database')),
+            id=f"{self.stack_name}-db-instance",
+            instance_identifier=f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier",
+            database_name=to_alpha_numeric(
+                parameters.get("database_name", f"{self.stack_name}-database")
+            ),
             engine=rds.DatabaseInstanceEngine.mysql(
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.PRIVATE
+                subnet_type=ec2.SubnetType.ISOLATED
+                if not self.allow_public_access()
+                else ec2.SubnetType.PUBLIC
             ),
             port=parameters.get("database_port"),
             instance_type=ec2.InstanceType.of(
@@ -246,16 +248,19 @@ class AWSStack(cdk_core.Stack):
             cloudwatch_logs_exports=RDSDatabase.CLOUDWATCH_LOG_EXPORTS,
             allocated_storage=RDSDatabase.ALLOCATED_STORAGE,
             max_allocated_storage=RDSDatabase.MAX_ALLOCATED_STORAGE,
-            publicly_accessible=True,
+            publicly_accessible=self.allow_public_access(),
             removal_policy=cdk_core.RemovalPolicy.DESTROY,
         )
 
-        database_instance.connections.allow_default_port_from(
-            ec2.Peer.ipv4('47.28.194.49/28')
-        )
-        database_instance.connections.allow_default_port_from(
-            ec2.Peer.ipv4('10.0.0.0/16')
-        )
+        if not self.allow_public_access():
+            database_instance.connections.allow_default_port_from(
+                ec2.Peer.ipv4("10.0.0.0/16")
+            )
+
+            for ip_address, description in self.get_ips().items():
+                database_instance.connections.allow_default_port_from(
+                    ec2.Peer.ipv4(ip_address)
+                )
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
@@ -279,7 +284,9 @@ class AWSStack(cdk_core.Stack):
         repo_name = f"{self.stack_name}-ecr-container"
         memory_limit = parameters.get("memory_limit")
         cpu = parameters.get("cpu")
-        image = self.add_ecr_image(repo_name=self.ecr_repo_name or f"{self.stack_name}-ecr-repo")
+        image = self.add_ecr_image(
+            repo_name=self.ecr_repo_name or f"{self.stack_name}-ecr-repo"
+        )
 
         fargate_task_definition = self.add_fargate_task(
             repo_name=repo_name, image=image, memory_limit=memory_limit, cpu=cpu
@@ -309,12 +316,14 @@ class AWSStack(cdk_core.Stack):
             "MemoryScaling", target_utilization_percent=AutoScaler.PERCENT
         )
 
-        CfnOutput(self,
-                  "LoadBalancerHost",
-                  value=load_balancing_service.load_balancer.load_balancer_dns_name)
+        CfnOutput(
+            self,
+            "LoadBalancerHost",
+            value=load_balancing_service.load_balancer.load_balancer_dns_name,
+        )
 
     def get_ips(self):
-        user_ips = self.config.get("metadata").get('whitelisted_ips')
+        user_ips = self.config.get("metadata").get("whitelisted_ips")
         ips = LoadBalancer.PRODUCTION_WHITELISTED_IPS
         if user_ips:
             for ip_address, description in ips.items():
@@ -352,7 +361,7 @@ class AWSStack(cdk_core.Stack):
         )
 
     def add_fargate_task(
-            self, repo_name, image, memory_limit=Fargate.MEMORY_LIMIT, cpu=Fargate.CPU
+        self, repo_name, image, memory_limit=Fargate.MEMORY_LIMIT, cpu=Fargate.CPU
     ):
         fargate_task_id = f"{repo_name}-fargate-task"
 
@@ -378,7 +387,7 @@ class AWSStack(cdk_core.Stack):
         return task
 
     def add_load_balancing_service(
-            self, load_balancer, repo_name, fargate_task, desired_count
+        self, load_balancer, repo_name, fargate_task, desired_count
     ):
         return ecs_patterns.ApplicationLoadBalancedFargateService(
             self,
@@ -394,4 +403,4 @@ class AWSStack(cdk_core.Stack):
         )
 
     def allow_public_access(self):
-        return self.deployment_environment not in ["staging", "production"]
+        return self.deployment_environment not in ["prod-staging", "production"]
