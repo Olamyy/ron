@@ -301,6 +301,18 @@ class AWSStack(cdk_core.Stack):
             desired_count=desired_count,
         )
 
+        load_balancing_service.task_definition.task_role.add_managed_policy(
+            iam.ManagedPolicy.from_aws_managed_policy_name(
+                "AmazonSSMManagedInstanceCore"
+            )
+        )
+
+        cfn_service = load_balancing_service.service.node.default_child
+        cfn_service.add_property_override(
+            "EnableExecuteCommand",
+            True
+        )
+
         load_balancing_service.target_group.configure_health_check(
             path=parameters.get("health_check"),
             interval=Duration.seconds(120),
