@@ -227,10 +227,13 @@ class AWSStack(cdk_core.Stack):
                 version=rds.MysqlEngineVersion.VER_8_0_23
             ),
             vpc_subnets=ec2.SubnetSelection(
-                subnet_type=ec2.SubnetType.ISOLATED
+                subnet_type=ec2.SubnetType.PRIVATE
                 if not self.allow_public_access()
                 else ec2.SubnetType.PUBLIC
             ),
+            security_groups=[
+                self.security_group
+            ],
             port=parameters.get("database_port"),
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
