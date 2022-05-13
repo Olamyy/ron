@@ -115,12 +115,35 @@ class AWSStack(cdk_core.Stack):
 
         if not self.vpc:
             vpc_name = f"{self.stack_name}-vpc"
+            subnets = [
+                ec2.SubnetConfiguration(
+                    name="Public",
+                    cidr_mask=24,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PUBLIC,
+                ),
+                ec2.SubnetConfiguration(
+                    name="private",
+                    cidr_mask=26,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.PRIVATE,
+                ),
+                ec2.SubnetConfiguration(
+                    name="DB",
+                    cidr_mask=26,
+                    reserved=False,
+                    subnet_type=ec2.SubnetType.ISOLATED,
+                ),
+            ]
             self.vpc = ec2.Vpc(
                 self,
                 id=vpc_name,
                 max_azs=VPCConfig.MAX_AVAILABILITY_ZONE,
                 cidr=parameters.get("vpc_cidr"),
                 nat_gateways=1,
+                subnet_configuration=subnets,
+                enable_dns_support=True,
+                enable_dns_hostnames=True
             )
 
         return self.vpc
@@ -184,37 +207,6 @@ class AWSStack(cdk_core.Stack):
         """
         Add a DB Instance to the stack
         """
-        subnets = [
-            ec2.SubnetConfiguration(
-                name="Public",
-                cidr_mask=24,
-                reserved=False,
-                subnet_type=ec2.SubnetType.PUBLIC,
-            ),
-            ec2.SubnetConfiguration(
-                name="private",
-                cidr_mask=26,
-                reserved=False,
-                subnet_type=ec2.SubnetType.PRIVATE,
-            ),
-            ec2.SubnetConfiguration(
-                name="DB",
-                cidr_mask=26,
-                reserved=False,
-                subnet_type=ec2.SubnetType.ISOLATED,
-            ),
-        ]
-
-        vpc = ec2.Vpc(
-            self,
-            id=f"{self.stack_name}-rds-vpc",
-            cidr="10.0.0.0/16",
-            max_azs=2,
-            nat_gateways=1,
-            subnet_configuration=subnets,
-            enable_dns_hostnames=True,
-            enable_dns_support=True,
-        )
 
         database_instance = rds.DatabaseInstance(
             self,
@@ -238,7 +230,7 @@ class AWSStack(cdk_core.Stack):
             instance_type=ec2.InstanceType.of(
                 ec2.InstanceClass.BURSTABLE3, ec2.InstanceSize.MICRO
             ),
-            vpc=vpc,
+            vpc=self.vpc,
             storage_type=rds.StorageType.GP2,
             storage_encrypted=True,
             backup_retention=cdk_core.Duration.days(0),
