@@ -250,7 +250,7 @@ class AWSStack(cdk_core.Stack):
         )
 
         if not self.allow_public_access():
-            self.self.database_instance.connections.allow_default_port_from(
+            self.database_instance.connections.allow_default_port_from(
                 ec2.Peer.ipv4("10.0.0.0/16")
             )
 
