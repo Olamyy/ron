@@ -172,9 +172,11 @@ class AWSStack(cdk_core.Stack):
 
             self.ecs_cluster.connections.allow_to(
                 self.database_instance,
-                ec2.Port.tcp(5432),
+                ec2.Port.tcp(3306),
                 'RDS Instance'
             )
+
+            self.ecs_cluster.connections.allow_internally(ec2.Port.tcp(3306))
 
         return self.ecs_cluster
 
@@ -250,15 +252,11 @@ class AWSStack(cdk_core.Stack):
         )
 
         if not self.allow_public_access():
-            self.database_instance.connections.allow_default_port_from(
-                ec2.Peer.ipv4("10.0.0.0/16")
-            )
-
-            for ip_address, description in self.get_ips().items():
-                self.database_instance.connections.allow_default_port_from(
-                    ec2.Peer.ipv4(ip_address),
-                    description=description
+            self.database_instance.connections.allow_internally(
+                    ec2.Port.tcp(3306)
                 )
+
+            print(self.database_instance.connections)
 
         else:
             self.database_instance.connections.allow_default_port_from_any_ipv4()
