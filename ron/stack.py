@@ -216,7 +216,7 @@ class AWSStack(cdk_core.Stack):
         Add a DB Instance to the stack
         """
 
-        self.self.database_instance = rds.DatabaseInstance(
+        self.database_instance = rds.DatabaseInstance(
             self,
             id=f"{self.stack_name}-db-instance",
             instance_identifier=f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier",
