@@ -62,7 +62,6 @@ class AWSStack(cdk_core.Stack):
     def build(self):
         for resource in self.resources:
             resource_type = resource.get("type")
-            print(resource_type)
             parameters = resource.get("parameters")
             if resource_type == AWSResources.IAM_ROLE.value:
                 self.add_role(parameters)
@@ -193,10 +192,13 @@ class AWSStack(cdk_core.Stack):
 
             if self.allow_public_access():
                 self.security_group.add_ingress_rule(
-                    ec2.Peer.any_ipv4(), connection=ec2.Port.all_tcp(), remote_rule=True
+                    ec2.Peer.any_ipv4(),
+                    connection=ec2.Port.all_tcp(),
+                    remote_rule=True
                 )
                 self.security_group.add_egress_rule(
-                    peer=ec2.Peer.any_ipv4(), connection=ec2.Port.all_tcp()
+                    peer=ec2.Peer.any_ipv4(),
+                    connection=ec2.Port.all_tcp()
                 )
             else:
                 for ip_address, description in self.get_ips().items():
@@ -255,8 +257,6 @@ class AWSStack(cdk_core.Stack):
             self.database_instance.connections.allow_internally(
                     ec2.Port.tcp(3306)
                 )
-
-            print(self.database_instance.connections)
 
         else:
             self.database_instance.connections.allow_default_port_from_any_ipv4()
@@ -397,35 +397,6 @@ class AWSStack(cdk_core.Stack):
                 container_port=Fargate.CONTAINER_PORT, protocol=ecs.Protocol.TCP
             )
         )
-
-        return task
-
-    def add_migration_task(self):
-        fargate_task_id = "fargate-migration-task"
-
-        task = ecs.FargateTaskDefinition(
-            self,
-            id=fargate_task_id,
-            cpu=Fargate.CPU,
-            memory_limit_mib=Fargate.MEMORY_LIMIT,
-            task_role=self.role,
-        )
-        image = self.add_ecr_image(
-            repo_name="db-migration-ecr-repo"
-        )
-        container = task.add_container(
-            "fargate-migration-task-container",
-            image=image,
-            logging=self.add_logger(fargate_task_id),
-        )
-
-        container.add_port_mappings(
-            ecs.PortMapping(
-                container_port=3306, protocol=ecs.Protocol.TCP
-            )
-        )
-
-        self.add_migration_task()
 
         return task
 
