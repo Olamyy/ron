@@ -126,7 +126,7 @@ class AWSStack(cdk_core.Stack):
                 ),
                 ec2.SubnetConfiguration(
                     name="private",
-                    cidr_mask=26,
+                    cidr_mask=24,
                     reserved=False,
                     subnet_type=ec2.SubnetType.PRIVATE,
                 ),
