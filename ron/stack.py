@@ -50,6 +50,7 @@ class AWSStack(cdk_core.Stack):
         self.role = None
         self.ecs_cluster = None
         self.logger = None
+        self.database_instance = None
 
     def extract_resources(self):
         if "resources" not in self.config:
@@ -61,6 +62,7 @@ class AWSStack(cdk_core.Stack):
     def build(self):
         for resource in self.resources:
             resource_type = resource.get("type")
+            print(resource_type)
             parameters = resource.get("parameters")
             if resource_type == AWSResources.IAM_ROLE.value:
                 self.add_role(parameters)
@@ -168,6 +170,12 @@ class AWSStack(cdk_core.Stack):
                 self, id=cluster_name, vpc=vpc, container_insights=True
             )
 
+            self.ecs_cluster.connections.allow_to(
+                self.database_instance,
+                ec2.Port.tcp(5432),
+                'RDS Instance'
+            )
+
         return self.ecs_cluster
 
     def add_ec2_security_group(self):
@@ -208,7 +216,7 @@ class AWSStack(cdk_core.Stack):
         Add a DB Instance to the stack
         """
 
-        database_instance = rds.DatabaseInstance(
+        self.self.database_instance = rds.DatabaseInstance(
             self,
             id=f"{self.stack_name}-db-instance",
             instance_identifier=f"{self.stack_name}-{generate_random_cdk_like_suffix()}-db-identifier",
@@ -242,26 +250,26 @@ class AWSStack(cdk_core.Stack):
         )
 
         if not self.allow_public_access():
-            database_instance.connections.allow_default_port_from(
+            self.self.database_instance.connections.allow_default_port_from(
                 ec2.Peer.ipv4("10.0.0.0/16")
             )
 
             for ip_address, description in self.get_ips().items():
-                database_instance.connections.allow_default_port_from(
+                self.database_instance.connections.allow_default_port_from(
                     ec2.Peer.ipv4(ip_address),
                     description=description
                 )
 
         else:
-            database_instance.connections.allow_default_port_from_any_ipv4()
+            self.database_instance.connections.allow_default_port_from_any_ipv4()
 
         secretsmanager.Secret.from_secret_complete_arn(
             self,
             f"{self.stack_name}-database-secret",
-            database_instance.secret.secret_arn,
+            self.database_instance.secret.secret_arn,
         )
 
-        return database_instance
+        return self.database_instance
 
     def restrict_to_whitelisted_ips(self, aws_resource):
         for ip_address, description in self.get_ips().items():
@@ -281,8 +289,11 @@ class AWSStack(cdk_core.Stack):
             repo_name=self.ecr_repo_name or f"{self.stack_name}-ecr-repo"
         )
 
-        fargate_task_definition = self.add_fargate_task(
-            repo_name=repo_name, image=image, memory_limit=memory_limit, cpu=cpu
+        fargate_task_definition = self.add_fargate_api_task(
+            repo_name=repo_name,
+            image=image,
+            memory_limit=memory_limit,
+            cpu=cpu
         )
 
         load_balancer = self.get_load_balancer()
@@ -365,10 +376,10 @@ class AWSStack(cdk_core.Stack):
             log_group=logs.LogGroup(self, f"{name}-logger"),
         )
 
-    def add_fargate_task(
+    def add_fargate_api_task(
         self, repo_name, image, memory_limit=Fargate.MEMORY_LIMIT, cpu=Fargate.CPU
     ):
-        fargate_task_id = f"{repo_name}-fargate-task"
+        fargate_task_id = f"{repo_name}-fargate-api-task"
 
         task = ecs.FargateTaskDefinition(
             self,
@@ -378,7 +389,7 @@ class AWSStack(cdk_core.Stack):
             task_role=self.role,
         )
         container = task.add_container(
-            f"{repo_name}-fargate-task-container",
+            f"{repo_name}-fargate-api-task-container",
             image=image,
             logging=self.add_logger(fargate_task_id),
         )
@@ -388,6 +399,35 @@ class AWSStack(cdk_core.Stack):
                 container_port=Fargate.CONTAINER_PORT, protocol=ecs.Protocol.TCP
             )
         )
+
+        return task
+
+    def add_migration_task(self):
+        fargate_task_id = "fargate-migration-task"
+
+        task = ecs.FargateTaskDefinition(
+            self,
+            id=fargate_task_id,
+            cpu=Fargate.CPU,
+            memory_limit_mib=Fargate.MEMORY_LIMIT,
+            task_role=self.role,
+        )
+        image = self.add_ecr_image(
+            repo_name="db-migration-ecr-repo"
+        )
+        container = task.add_container(
+            "fargate-migration-task-container",
+            image=image,
+            logging=self.add_logger(fargate_task_id),
+        )
+
+        container.add_port_mappings(
+            ecs.PortMapping(
+                container_port=3306, protocol=ecs.Protocol.TCP
+            )
+        )
+
+        self.add_migration_task()
 
         return task
 
